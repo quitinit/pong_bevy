@@ -28,15 +28,22 @@ struct Score(u8);
 #[derive(Resource)]
 struct Velocity(f32);
 
+#[derive(Resource)]
+struct Direction(Vec3);
+
 #[derive(Component)]
 struct Collider;
 fn move_rectangle(
     time: Res<Time>,
     mut query: Query<&mut Transform, With<Ball>>,
     velocity: Res<Velocity>,
+    direction: Res<Direction>,
 ) {
     for mut transform in &mut query {
-        transform.translation.x += (300. * velocity.0) * time.delta_secs();
+        transform.translation.x += (direction.0[0] * velocity.0) * time.delta_secs();
+        transform.translation.y += (direction.0[1] * velocity.0) * time.delta_secs();
+
+        //transform.translation.x += (300. * velocity.0) * time.delta_secs();
     }
 }
 
@@ -156,7 +163,8 @@ fn setup(
 
 fn main() {
     App::new()
-        .insert_resource(Velocity(1.0))
+        .insert_resource(Velocity(100.0))
+        .insert_resource(Direction(Vec3::new(1., 1., 0.)))
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(
