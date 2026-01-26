@@ -54,9 +54,6 @@ fn keyboard_control(
 ) {
     if keyboard_input.pressed(KeyCode::KeyW) {
         for mut transform in &mut player_query {
-            println!("window size is {}", window.height());
-            println!("y position is {}", transform.translation.y);
-
             if transform.translation.y <= window.height() / 2. - 52. {
                 transform.translation.y += 5.
             }
@@ -64,8 +61,6 @@ fn keyboard_control(
     };
     if keyboard_input.pressed(KeyCode::KeyS) {
         for mut transform in &mut player_query {
-            println!("window size is {}", window.height());
-            println!("y position is {}", transform.translation.y);
             if transform.translation.y > -window.height() / 2. + 52. {
                 transform.translation.y -= 5.
             }
@@ -79,9 +74,6 @@ fn oponent_keyboard_control(
 ) {
     if keyboard_input.pressed(KeyCode::ArrowUp) {
         for mut transform in &mut player_query {
-            println!("window size is {}", window.height());
-            println!("y position is {}", transform.translation.y);
-
             if transform.translation.y <= window.height() / 2. - 52. {
                 transform.translation.y += 5.
             }
@@ -89,8 +81,6 @@ fn oponent_keyboard_control(
     };
     if keyboard_input.pressed(KeyCode::ArrowDown) {
         for mut transform in &mut player_query {
-            println!("window size is {}", window.height());
-            println!("y position is {}", transform.translation.y);
             if transform.translation.y > -window.height() / 2. + 52. {
                 transform.translation.y -= 5.
             }
@@ -120,9 +110,51 @@ fn detect_collision(
                 Vec2 { x: 8., y: 50.0 },
             );
             if ball_bounding_box.intersects(&collider_bounding_box) {
-                velocity.0 *= -1.
+                velocity.0 *= -1.1;
             }
         }
+    }
+}
+
+fn bounce_off_walls(
+    ball_query: Single<&Transform, With<Ball>>,
+    window: Single<&Window>,
+    mut direction: ResMut<Direction>,
+    mut velocity: ResMut<Velocity>,
+) {
+    let ball_bounding_box = Aabb2d::new(
+        Vec2 {
+            x: ball_query.translation.x,
+            y: ball_query.translation.y,
+        },
+        Vec2 { x: 16.0, y: 16.0 },
+    );
+
+    let top_bounding = Aabb2d::new(
+        Vec2 {
+            x: 0.,
+            y: (window.height() / 2.0) + 2.0,
+        },
+        Vec2 {
+            x: window.width() / 2.,
+            y: 1.,
+        },
+    );
+
+    let bottom_bounding = Aabb2d::new(
+        Vec2 {
+            x: 0.,
+            y: -((window.height() / 2.0) + 2.0),
+        },
+        Vec2 {
+            x: window.width() / 2.,
+            y: 1.,
+        },
+    );
+    if ball_bounding_box.intersects(&top_bounding) || ball_bounding_box.intersects(&bottom_bounding)
+    {
+        //direction.0[0] *= -1.;
+        direction.0[1] *= -1.;
     }
 }
 
@@ -164,7 +196,7 @@ fn setup(
 fn main() {
     App::new()
         .insert_resource(Velocity(100.0))
-        .insert_resource(Direction(Vec3::new(1., 1., 0.)))
+        .insert_resource(Direction(Vec3::new(1., -1., 0.)))
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(
@@ -174,6 +206,7 @@ fn main() {
                 oponent_keyboard_control,
                 move_rectangle,
                 detect_collision,
+                bounce_off_walls,
             )
                 .chain(),
         )
