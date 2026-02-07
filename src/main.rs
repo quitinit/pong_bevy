@@ -1,6 +1,6 @@
 use bevy::{
     color::palettes::basic::WHITE,
-    ecs::query,
+    ecs::query::{self, WorldQuery},
     math::bounding::{Aabb2d, IntersectsVolume},
     mesh,
     prelude::*,
@@ -8,11 +8,28 @@ use bevy::{
 
 #[derive(Component)]
 struct Player;
-
+#[derive(Component)]
+struct ScoreBoard;
 #[derive(Component)]
 struct Oponent;
 #[derive(Component)]
 struct Paddle;
+
+#[derive(Component)]
+enum Side {
+    PLAYER,
+    OPONENT,
+}
+
+#[derive(Event)]
+struct BallCollided {
+    side: Side,
+}
+#[derive(Resource)]
+struct Score {
+    player: u8,
+    oponent: u8,
+}
 
 #[derive(Component)]
 struct Ball;
@@ -24,6 +41,9 @@ struct OponentScore(u8);
 
 #[derive(Component)]
 struct PlayerScoreTag;
+
+#[derive(Component)]
+struct OponentScoreTag;
 #[derive(Resource)]
 struct Velocity(f32);
 
@@ -156,12 +176,31 @@ fn bounce_off_walls(
         direction.0[1] *= -1.;
     }
 }
+fn update_score(
+    _collided: On<BallCollided>,
+    mut score: ResMut<Score>,
+    mut score_board: Query<(&Side, &mut Text2d), With<ScoreBoard>>,
+) {
+    match _collided.side {
+        Side::OPONENT => {
+            score.player += 1;
+        }
+        Side::PLAYER => {
+            score.oponent += 1;
+        }
+    }
+    for (side, mut text) in &mut score_board {
+        match side {
+            Side::OPONENT => text.0 = score.oponent.to_string(),
+            Side::PLAYER => text.0 = score.player.to_string(),
+        }
+    }
+}
 
 fn score_goal(
+    mut commands: Commands,
     mut ball_query: Single<&mut Transform, With<Ball>>,
     window: Single<&Window>,
-    mut player_score: ResMut<PlayerScore>,
-    mut player_score_text: Single<&mut Text2d, With<PlayerScoreTag>>,
 ) {
     let ball_bounding_box = Aabb2d::new(
         Vec2 {
@@ -190,10 +229,16 @@ fn score_goal(
             y: window.height() / 2.,
         },
     );
-    if ball_bounding_box.intersects(&left_bounding) || ball_bounding_box.intersects(&right_bounding)
-    {
-        player_score.0 += 1; //direction.0[0] *= -1.;
-        player_score_text.0 = player_score.0.to_string();
+    if ball_bounding_box.intersects(&left_bounding) {
+        commands.trigger(BallCollided { side: Side::PLAYER });
+        //player_score.0 += 1; //direction.0[0] *= -1.;
+        //player_score_text.0 = player_score.0.to_string();
+        ball_query.translation.x = 0.;
+        ball_query.translation.y = 0.;
+    } else if ball_bounding_box.intersects(&right_bounding) {
+        commands.trigger(BallCollided {
+            side: Side::OPONENT,
+        });
         ball_query.translation.x = 0.;
         ball_query.translation.y = 0.;
     }
@@ -203,7 +248,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     window: Single<&Window>,
-    player_score: Res<PlayerScore>,
+    score: Res<Score>,
 ) {
     commands.spawn(Camera2d);
     commands.spawn((
@@ -232,20 +277,30 @@ fn setup(
             .with_scale(Vec3::new(16.0, 100.0, 1.0))
             .with_translation(Vec3::new(-window.width() / 2. + 32., 0., 0.)),
     ));
+
     commands.spawn((
-        PlayerScoreTag,
-        Text2d::new(player_score.0.to_string()),
+        ScoreBoard,
+        Side::OPONENT,
+        Text2d::new(score.oponent.to_string()),
         TextLayout::new_with_justify(Justify::Center),
-        Transform::from_translation(Vec3::new(0., window.height() / 2. - 20., 0.0)),
-        // Add a black shadow to the text
+        Transform::from_translation(Vec3::new(10., window.height() / 2. - 20., 0.0)),
+    ));
+    commands.spawn((
+        ScoreBoard,
+        Side::PLAYER,
+        Text2d::new(score.player.to_string()),
+        TextLayout::new_with_justify(Justify::Center),
+        Transform::from_translation(Vec3::new(-10., window.height() / 2. - 20., 0.0)),
     ));
 }
 
 fn main() {
     App::new()
         .insert_resource(Velocity(100.0))
-        .insert_resource(PlayerScore(0))
-        .insert_resource(OponentScore(0))
+        .insert_resource(Score {
+            player: 0,
+            oponent: 0,
+        })
         .insert_resource(Direction(Vec3::new(1., -1., 0.)))
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
@@ -260,5 +315,6 @@ fn main() {
                 score_goal,
             ),
         )
+        .add_observer(update_score)
         .run();
 }
