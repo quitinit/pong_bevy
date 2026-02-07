@@ -35,16 +35,6 @@ struct Score {
 struct Ball;
 
 #[derive(Resource)]
-struct PlayerScore(u8);
-#[derive(Resource)]
-struct OponentScore(u8);
-
-#[derive(Component)]
-struct PlayerScoreTag;
-
-#[derive(Component)]
-struct OponentScoreTag;
-#[derive(Resource)]
 struct Velocity(f32);
 
 #[derive(Resource)]
@@ -106,7 +96,7 @@ fn oponent_keyboard_control(
         }
     };
 }
-
+// TODO make collision handling a seperate function
 fn detect_collision(
     ball_query: Query<&Transform, With<Ball>>,
     collider_query: Query<&Transform, With<Collider>>,
