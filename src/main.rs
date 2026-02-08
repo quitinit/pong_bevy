@@ -1,10 +1,18 @@
 use bevy::{
     color::palettes::basic::WHITE,
-    ecs::query::{self, WorldQuery},
-    math::bounding::{Aabb2d, IntersectsVolume},
-    mesh,
+    math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
     prelude::*,
 };
+use rand::Rng;
+use std::fmt;
+#[derive(Component)]
+struct BoundingBox(Aabb2d);
+
+impl fmt::Display for BoundingBox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.0.min, self.0.max)
+    }
+}
 
 #[derive(Component)]
 struct Player;
@@ -17,8 +25,8 @@ struct Paddle;
 
 #[derive(Component)]
 enum Side {
-    PLAYER,
-    OPONENT,
+    Player,
+    Oponent,
 }
 
 #[derive(Event)]
@@ -42,17 +50,36 @@ struct Direction(Vec3);
 
 #[derive(Component)]
 struct Collider;
+
+/*
+i want to visualize the colliders
+what to i need to.
+
+query the colliders and spawn in red rectanlges
+
+first of all perhaps I can add a bounding box to the ball at startup instead of on update
+*/
+
 fn move_rectangle(
     time: Res<Time>,
     mut query: Query<&mut Transform, With<Ball>>,
     velocity: Res<Velocity>,
     direction: Res<Direction>,
+    mut bounding_box_query: Query<&mut BoundingBox, With<Ball>>,
 ) {
     for mut transform in &mut query {
-        transform.translation.x += (direction.0[0] * velocity.0) * time.delta_secs();
-        transform.translation.y += (direction.0[1] * velocity.0) * time.delta_secs();
+        let new_translation_x = (direction.0[0] * velocity.0) * time.delta_secs();
+        let new_translation_y = (direction.0[1] * velocity.0) * time.delta_secs();
 
-        //transform.translation.x += (300. * velocity.0) * time.delta_secs();
+        transform.translation.x += new_translation_x;
+        transform.translation.y += new_translation_y;
+
+        for mut bounding_box in &mut bounding_box_query {
+            bounding_box
+                .0
+                .translate_by(Vec2::new(new_translation_x, new_translation_y));
+            // println!("bounding box is {}", bounding_box);
+        }
     }
 }
 
@@ -98,31 +125,25 @@ fn oponent_keyboard_control(
 }
 // TODO make collision handling a seperate function
 fn detect_collision(
-    ball_query: Query<&Transform, With<Ball>>,
     collider_query: Query<&Transform, With<Collider>>,
+    ball_bounding_box: Single<&BoundingBox, With<Ball>>,
     mut velocity: ResMut<Velocity>,
     mut direction: ResMut<Direction>,
 ) {
-    for transform in ball_query {
-        let ball_bounding_box = Aabb2d::new(
+    for collider_transform in collider_query {
+        let collider_bounding_box = Aabb2d::new(
             Vec2 {
-                x: transform.translation.x,
-                y: transform.translation.y,
+                x: collider_transform.translation.x,
+                y: collider_transform.translation.y,
             },
-            Vec2 { x: 16.0, y: 16.0 },
+            Vec2 { x: 8., y: 50.5 },
         );
-        for collider_transform in collider_query {
-            let collider_bounding_box = Aabb2d::new(
-                Vec2 {
-                    x: collider_transform.translation.x,
-                    y: collider_transform.translation.y,
-                },
-                Vec2 { x: 8., y: 50.0 },
-            );
-            if ball_bounding_box.intersects(&collider_bounding_box) {
-                velocity.0 *= -1.1;
-                direction.0[1] *= -1.;
-            }
+        if ball_bounding_box.0.intersects(&collider_bounding_box) {
+            //velocity.0 *= 1.1;
+            println!("direction before {}", direction.0);
+            direction.0[0] *= -1.;
+            velocity.0 *= 1.05;
+            println!("direction after{}", direction.0);
         }
     }
 }
@@ -162,7 +183,6 @@ fn bounce_off_walls(
     );
     if ball_bounding_box.intersects(&top_bounding) || ball_bounding_box.intersects(&bottom_bounding)
     {
-        //direction.0[0] *= -1.;
         direction.0[1] *= -1.;
     }
 }
@@ -172,17 +192,17 @@ fn update_score(
     mut score_board: Query<(&Side, &mut Text2d), With<ScoreBoard>>,
 ) {
     match _collided.side {
-        Side::OPONENT => {
+        Side::Oponent => {
             score.player += 1;
         }
-        Side::PLAYER => {
+        Side::Player => {
             score.oponent += 1;
         }
     }
     for (side, mut text) in &mut score_board {
         match side {
-            Side::OPONENT => text.0 = score.oponent.to_string(),
-            Side::PLAYER => text.0 = score.player.to_string(),
+            Side::Oponent => text.0 = score.oponent.to_string(),
+            Side::Player => text.0 = score.player.to_string(),
         }
     }
 }
@@ -220,14 +240,12 @@ fn score_goal(
         },
     );
     if ball_bounding_box.intersects(&left_bounding) {
-        commands.trigger(BallCollided { side: Side::PLAYER });
-        //player_score.0 += 1; //direction.0[0] *= -1.;
-        //player_score_text.0 = player_score.0.to_string();
+        commands.trigger(BallCollided { side: Side::Player });
         ball_query.translation.x = 0.;
         ball_query.translation.y = 0.;
     } else if ball_bounding_box.intersects(&right_bounding) {
         commands.trigger(BallCollided {
-            side: Side::OPONENT,
+            side: Side::Oponent,
         });
         ball_query.translation.x = 0.;
         ball_query.translation.y = 0.;
@@ -246,6 +264,10 @@ fn setup(
         Mesh2d(meshes.add(Rectangle::default())),
         MeshMaterial2d(materials.add(Color::from(WHITE))),
         Transform::default().with_scale(Vec3::splat(32.0)),
+        BoundingBox(Aabb2d::new(
+            Vec2 { x: 0., y: 0. },
+            Vec2 { x: 16.0, y: 16.0 },
+        )),
     ));
     commands.spawn((
         Oponent,
@@ -270,14 +292,14 @@ fn setup(
 
     commands.spawn((
         ScoreBoard,
-        Side::OPONENT,
+        Side::Oponent,
         Text2d::new(score.oponent.to_string()),
         TextLayout::new_with_justify(Justify::Center),
         Transform::from_translation(Vec3::new(10., window.height() / 2. - 20., 0.0)),
     ));
     commands.spawn((
         ScoreBoard,
-        Side::PLAYER,
+        Side::Player,
         Text2d::new(score.player.to_string()),
         TextLayout::new_with_justify(Justify::Center),
         Transform::from_translation(Vec3::new(-10., window.height() / 2. - 20., 0.0)),
@@ -285,17 +307,21 @@ fn setup(
 }
 
 fn main() {
+    let mut rng = rand::rng();
+
     App::new()
-        .insert_resource(Velocity(100.0))
+        .insert_resource(Velocity(150.0))
         .insert_resource(Score {
             player: 0,
             oponent: 0,
         })
-        .insert_resource(Direction(Vec3::new(1., -1., 0.)))
+        .insert_resource(Direction(
+            Vec3::new(1., rng.random_range(0.0..1.0), 0.).normalize(),
+        ))
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(
-            Update,
+            FixedUpdate,
             (
                 keyboard_control,
                 oponent_keyboard_control,
