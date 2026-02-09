@@ -29,6 +29,14 @@ enum Side {
     Oponent,
 }
 
+#[derive(Component)]
+enum FieldSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
 #[derive(Event)]
 struct BallCollided {
     side: Side,
@@ -85,65 +93,60 @@ fn move_rectangle(
 
 fn keyboard_control(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut player_query: Query<&mut Transform, With<Player>>,
+    mut player_query: Query<(&mut Transform, &mut BoundingBox), With<Player>>,
     window: Single<&Window>,
 ) {
     if keyboard_input.pressed(KeyCode::KeyW) {
-        for mut transform in &mut player_query {
+        for (mut transform, mut bounding_box) in &mut player_query {
             if transform.translation.y <= window.height() / 2. - 52. {
-                transform.translation.y += 5.
+                transform.translation.y += 5.;
+                bounding_box.0.translate_by(Vec2::new(0., 5.));
             }
         }
     };
     if keyboard_input.pressed(KeyCode::KeyS) {
-        for mut transform in &mut player_query {
+        for (mut transform, mut bounding_box) in &mut player_query {
             if transform.translation.y > -window.height() / 2. + 52. {
-                transform.translation.y -= 5.
+                transform.translation.y -= 5.;
+                bounding_box.0.translate_by(Vec2::new(0., -5.));
             }
         }
     };
 }
 fn oponent_keyboard_control(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut player_query: Query<&mut Transform, With<Oponent>>,
+    mut player_query: Query<(&mut Transform, &mut BoundingBox), With<Oponent>>,
     window: Single<&Window>,
 ) {
     if keyboard_input.pressed(KeyCode::ArrowUp) {
-        for mut transform in &mut player_query {
+        for (mut transform, mut bounding_box) in &mut player_query {
             if transform.translation.y <= window.height() / 2. - 52. {
-                transform.translation.y += 5.
+                transform.translation.y += 5.;
+                bounding_box.0.translate_by(Vec2::new(0., 5.));
             }
         }
     };
     if keyboard_input.pressed(KeyCode::ArrowDown) {
-        for mut transform in &mut player_query {
+        for (mut transform, mut bounding_box) in &mut player_query {
             if transform.translation.y > -window.height() / 2. + 52. {
-                transform.translation.y -= 5.
+                transform.translation.y -= 5.;
+                bounding_box.0.translate_by(Vec2::new(0., -5.))
             }
         }
     };
 }
 // TODO make collision handling a seperate function
 fn detect_collision(
-    collider_query: Query<&Transform, With<Collider>>,
     ball_bounding_box: Single<&BoundingBox, With<Ball>>,
+    collider_bounding_box: Query<&BoundingBox, With<Collider>>,
     mut velocity: ResMut<Velocity>,
     mut direction: ResMut<Direction>,
 ) {
-    for collider_transform in collider_query {
-        let collider_bounding_box = Aabb2d::new(
-            Vec2 {
-                x: collider_transform.translation.x,
-                y: collider_transform.translation.y,
-            },
-            Vec2 { x: 8., y: 50.5 },
-        );
-        if ball_bounding_box.0.intersects(&collider_bounding_box) {
-            //velocity.0 *= 1.1;
-            println!("direction before {}", direction.0);
+    for bouding_box in collider_bounding_box {
+        let collider = bouding_box.0;
+        if ball_bounding_box.0.intersects(&collider) {
             direction.0[0] *= -1.;
             velocity.0 *= 1.05;
-            println!("direction after{}", direction.0);
         }
     }
 }
@@ -209,46 +212,54 @@ fn update_score(
 
 fn score_goal(
     mut commands: Commands,
-    mut ball_query: Single<&mut Transform, With<Ball>>,
+    mut ball_query: Single<(&mut Transform, &mut BoundingBox), With<Ball>>,
     window: Single<&Window>,
 ) {
-    let ball_bounding_box = Aabb2d::new(
-        Vec2 {
-            x: ball_query.translation.x,
-            y: ball_query.translation.y,
-        },
-        Vec2 { x: 16.0, y: 16.0 },
-    );
     let right_bounding = Aabb2d::new(
         Vec2 {
-            x: window.width() / 2. + 2.,
+            x: window.width() / 2.,
             y: 0.,
         },
         Vec2 {
-            x: 1.5,
+            x: 0.,
             y: window.height() / 2.,
         },
     );
     let left_bounding = Aabb2d::new(
         Vec2 {
-            x: -(window.width() / 2. + 2.),
+            x: -(window.width() / 2.),
             y: 0.,
         },
         Vec2 {
-            x: 1.5,
+            x: 0.,
             y: window.height() / 2.,
         },
     );
-    if ball_bounding_box.intersects(&left_bounding) {
+
+    if ball_query.1.0.intersects(&left_bounding) {
         commands.trigger(BallCollided { side: Side::Player });
-        ball_query.translation.x = 0.;
-        ball_query.translation.y = 0.;
-    } else if ball_bounding_box.intersects(&right_bounding) {
+        // reset the bounding box
+        let distance_to_zero_x = 0. - ball_query.0.translation.x;
+        let distance_to_zero_y = 0. - ball_query.0.translation.y;
+
+        ball_query
+            .1
+            .0
+            .translate_by(Vec2::new(distance_to_zero_x, distance_to_zero_y));
+        ball_query.0.translation.x = 0.;
+        ball_query.0.translation.y = 0.;
+    } else if ball_query.1.0.intersects(&right_bounding) {
         commands.trigger(BallCollided {
             side: Side::Oponent,
         });
-        ball_query.translation.x = 0.;
-        ball_query.translation.y = 0.;
+        let distance_to_zero_x = 0. - ball_query.0.translation.x;
+        let distance_to_zero_y = 0. - ball_query.0.translation.y;
+        ball_query
+            .1
+            .0
+            .translate_by(Vec2::new(distance_to_zero_x, distance_to_zero_y));
+        ball_query.0.translation.x = 0.;
+        ball_query.0.translation.y = 0.;
     }
 }
 fn setup(
@@ -278,6 +289,13 @@ fn setup(
         Transform::default()
             .with_scale(Vec3::new(16.0, 100.0, 1.0))
             .with_translation(Vec3::new(window.width() / 2. - 32., 0., 0.)),
+        BoundingBox(Aabb2d::new(
+            Vec2 {
+                x: window.width() / 2. - 32.,
+                y: 0.,
+            },
+            Vec2 { x: 8., y: 50.5 },
+        )),
     ));
     commands.spawn((
         Player,
@@ -288,6 +306,13 @@ fn setup(
         Transform::default()
             .with_scale(Vec3::new(16.0, 100.0, 1.0))
             .with_translation(Vec3::new(-window.width() / 2. + 32., 0., 0.)),
+        BoundingBox(Aabb2d::new(
+            Vec2 {
+                x: -window.width() / 2. + 32.,
+                y: 0.,
+            },
+            Vec2 { x: 8., y: 50.5 },
+        )),
     ));
 
     commands.spawn((
